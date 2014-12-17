@@ -5,6 +5,81 @@ prognoseUmsatz = c()
 umsatzaggregiert = c()
 
 confidenceLevel = 0.90
+
+
+
+
+
+# TODO: Währungsart beachten
+
+# Fragen: Warum umsatzaggregiert KW 21 - 24 == 0.0?
+
+# SASCHA
+
+# import data -> data frame
+sales.csv = read.table(file = "./data/AA_Umsatzbelege.csv", header = TRUE, sep=";")
+
+# remove all entrys not having S as SOLL.HABEN.KENNZSICHEN
+sales.csv <- sales.csv[sales.csv$SOLL.HABEN.KENNZSICHEN=="S",]
+
+# split data frame by AUSGLEICHSDATUM, BUCHUNGSKREIS, sum BETRAG
+sales.aggregated <- aggregate(
+  sales.csv$BETRAG, 
+  list(
+    companycode=sales.csv$BUCHUNGSKREIS,
+    weeknumber=as.numeric(format(as.Date(sales.csv$AUSGLEICHDATUM, format = "%d.%m.%Y"), "%U"))
+  ), 
+  function(x){
+    # TODO: maybe merge into sum function
+    return(sum(x))
+  }
+)
+
+# TODO: merge this into upper function
+# Supports multiple company codes
+sales.prediction <- by(sales.aggregated, list(companycode=sales.aggregated$companycode), function(x) {
+  
+  # removes companycode from data.frame
+  y <- subset(x, select= -companycode)
+
+  sales.wn.max <- max(x$weeknumber)
+  sales.aggregated.length <- nrow(sales.aggregated)
+  
+  # linear regression
+  sales.aggregated.lm <- lm(x ~ weeknumber, data = y)
+  
+  # newdata with variables with which to predict
+  sales.prediction.data <- data.frame(weeknumber=seq(sales.wn.max + 1, sales.wn.max + 1 + round(sales.aggregated.length/3), 1))
+  
+  # prediction
+  # --> Serkan
+  return(predict(sales.aggregated.lm, sales.prediction.data,  se.fit = TRUE, interval = "confidence", level = confidenceLevel))
+})
+
+
+data.frame(sales.prediction$AA)
+
+
+# clean up
+#rm(list = ls())
+
+# DEL
+
+# split imported data.frame using the weeknumber of AUSGLEICHSDATUM to new list
+# sales.csv.weeknumber <- split(sales.csv, format(as.Date(sales.csv$AUSGLEICHDATUM, format = "%d.%m.%Y"), "%U"));
+
+# sum values where SOLL.HABEN.KENNZSICHEN equals "S"
+# sales.aggregated <- lapply(sales.csv.weeknumber, function(x) {
+#  return(sum(x$BETRAG[which(x$SOLL.HABEN.KENNZSICHEN=="S")]))
+#})
+
+# clean up
+# rm(list = ls())
+
+
+# TMP
+AA_Umsatzbelege = sales.csv
+
 zeilenAnzahlTabelle = nrow(AA_Umsatzbelege)
 
 # Aggregation der Umsatzaetze pro Woche
@@ -13,7 +88,7 @@ ersteKalenderWoche = kw
 letzteKalenderWoche = as.numeric(format(as.Date(AA_Umsatzbelege[nrow(AA_Umsatzbelege), 5], format = "%d.%m.%Y"), "%U")) + 1
 anzahlGeschaeftswochen = ( letzteKalenderWoche - kw ) + 1
 
-# KW Gesch�ftswochen bestimmen
+# KW Geschäftswochen bestimmen
 
 for (i in kw : letzteKalenderWoche){
   geschaeftsWochen[i - (kw-1)] = i
