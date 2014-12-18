@@ -50,7 +50,7 @@ sales.prediction.list <- by(sales.aggregated, list(companycode=sales.aggregated$
 })
 
 # implode list of dataframes to dataframe
-sales.prediction.df = do.call(rbind.data.frame, sales.prediction.list)
+sales.prediction = do.call(rbind.data.frame, sales.prediction.list)
 
 # clean up
 rm(list = ls())
