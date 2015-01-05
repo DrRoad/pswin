@@ -6,11 +6,10 @@ predictionNum = 4
 # TODO: Lieferungskosten abziehen
 
 # import data -> data frame
-sales.csv = read.table(file = "./data/AA_Umsatzbelege.csv", header = TRUE, sep=";")
+sales.csv = read.table(file = "./data/BSEG.csv", header = TRUE, sep=";", strip.white=TRUE)
 
 # remove all entrys not having "S" as SHKZG (SOLL.HABEN.KENNZSICHEN)
 sales.csv <- sales.csv[sales.csv$SHKZG=="S",]
-
 
 # KOART (Kontoart) (D = Debitoren, K = Kreditoren)
 
