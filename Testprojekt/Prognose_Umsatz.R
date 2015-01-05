@@ -2,59 +2,67 @@
 confidenceLevel = 0.95
 predictionNum = 4
 
-
-# TODO: Lieferungskosten abziehen
-
 # import data -> data frame
-sales.csv = read.table(file = "./data/BSEG.csv", header = TRUE, sep=";", strip.white=TRUE)
+bseg.table = read.table(file = "./data/BSEG.csv", header = TRUE, sep=";", strip.white=TRUE, dec = ",")
 
-# remove all entrys not having "S" as SHKZG (SOLL.HABEN.KENNZSICHEN)
-sales.csv <- sales.csv[sales.csv$SHKZG=="S",]
+# remove all entrys not having "S" as SHKZG (SOLL.HABEN.KENNZEICHEN)
+bseg.table <- bseg.table[bseg.table$SHKZG=="S", ]   # TODO (Sascha): Bei Kreditoren auch S?!
 
-# KOART (Kontoart) (D = Debitoren, K = Kreditoren)
+# Remove rows where KOART != D or K
+bseg.table <- bseg.table[bseg.table$KOART=="K" | bseg.table$KOART=="D", ]  # KOART (Kontoart) (D = Debitoren, K = Kreditoren)
+bseg.table$KOART <- factor(bseg.table$KOART)  # Reset factor values
 
-# Split data frame by AUGDT (Datum des Ausgleichs), BUKRS (Buchungskreis), sum DMBTR (Betrag in Hauswährung)
-sales.aggregated <- aggregate(
-  sales.csv$DMBTR, 
-  by = list(
-    companycode = sales.csv$BUKRS,
-    weeknumber = as.numeric(format(as.Date(sales.csv$AUGDT, format = "%d.%m.%Y"), "%U")) + 1
-  ),
-  FUN=sum, 
-  na.rm=TRUE
-)
+# Fix for german thousand and decimal seperator
+bseg.table$DMBTR <- as.double(gsub(',', '.', gsub('\\.', '', bseg.table$DMBTR)))
 
-# Support for multiple company codes
-sales.prediction.list <- by(sales.aggregated, list(companycode=sales.aggregated$companycode), function(x) {  
+# Make prediction for sales (K) and charges (D)
+bseg.prediction <- by(bseg.table, list(type = bseg.table$KOART), function(x) {  
 
-  sales.wn.max <- max(x$weeknumber)
-  sales.wn.min <- min(x$weeknumber)
+  # Split data frame by AUGDT (Datum des Ausgleichs), BUKRS (Buchungskreis) AND sum DMBTR (Betrag in Hauswährung)
+  sales.aggregated <- aggregate(
+    x = as.double(x$DMBTR), 
+    by = list(
+      mandant = x$MANDT,
+      companycode = x$BUKRS,
+      weeknumber = as.numeric(format(as.Date(x$AUGDT, format = "%d.%m.%Y"), "%U")) + 1
+    ),
+    FUN=sum, 
+    na.rm=TRUE
+  )
+
+  # Proceed prediction for each companycode
+  sales.prediction.list <- by(sales.aggregated, list(companycode=sales.aggregated$companycode), function(x) {  
+    
+    # Add 0 for missing weeknumbers 
+    x.expanded <- merge(expand.grid(companycode = unique(x$companycode), weeknumber = seq(min(x$weeknumber), max(x$weeknumber), 1)), 
+                        x, all=TRUE, by=c("companycode","weeknumber"))
+    x.expanded[is.na(x.expanded)] <- 0
+    
+    # linear regression
+    sales.aggregated.lm <- lm(x ~ weeknumber, data = x.expanded)
+    
+    # newdata with variables with which to predict
+    sales.prediction.data <- data.frame(weeknumber=seq(max(x$weeknumber) + 1, max(x$weeknumber) + predictionNum, 1))
+    
+    # prediction
+    sales.prediction.predict <- predict(sales.aggregated.lm, sales.prediction.data,  se.fit = TRUE, interval = "confidence", level = confidenceLevel)
+    
+    # returns df of weeknumber, prediction, and confidence level
+    sales.prediction.frame <- data.frame(sales.prediction.data$weeknumber, sales.prediction.predict, confidenceLevel)
+    names(sales.prediction.frame) <- c("weeknumber", "fit", "min", 'max', 'sefit', 'df', 'residualscale','confidence')
+    
+    return (sales.prediction.frame)
+  })
   
-  # Add 0 for missing weeknumbers 
-  x.expanded <- merge(expand.grid(companycode = unique(x$companycode), weeknumber = seq(sales.wn.min, sales.wn.max, 1)), 
-                      x, all=TRUE, by=c("companycode","weeknumber"))
-  x.expanded[is.na(x.expanded)] <- 0
-
-  sales.aggregated.length <- nrow(sales.aggregated)
+  # implode list of dataframes to dataframe
+  sales.prediction = do.call(rbind.data.frame, sales.prediction.list)
   
-  # linear regression
-  sales.aggregated.lm <- lm(x ~ weeknumber, data = x.expanded)
-  
-  # newdata with variables with which to predict
-  sales.prediction.data <- data.frame(weeknumber=seq(sales.wn.max + 1, sales.wn.max + predictionNum, 1))
-
-  # prediction
-  sales.prediction.predict <- predict(sales.aggregated.lm, sales.prediction.data,  se.fit = TRUE, interval = "confidence", level = confidenceLevel)
-  
-  # returns df of weeknumber, prediction, and confidence level
-  sales.prediction.frame <- data.frame(sales.prediction.data$weeknumber, sales.prediction.predict, confidenceLevel)
-  names(sales.prediction.frame) <- c("weeknumber", "fit", "min", 'max', 'sefit', 'df', 'residualscale','confidence')
-  
-  return (sales.prediction.frame)
+  return (sales.prediction)
 })
 
-# implode list of dataframes to dataframe
-sales.prediction = do.call(rbind.data.frame, sales.prediction.list)
+
+bseg.prediction
+
 
 # clean up
 rm(list = ls())
