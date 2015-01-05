@@ -1,43 +1,48 @@
 # default values
 confidenceLevel = 0.95
+predictionNum = 4
 
 
-# TODO: Support currency 
-# TODO: Append weeknumbers without any sales
+# TODO: Lieferungskosten abziehen
 
 # import data -> data frame
 sales.csv = read.table(file = "./data/AA_Umsatzbelege.csv", header = TRUE, sep=";")
 
-# remove all entrys not having S as SOLL.HABEN.KENNZSICHEN
-sales.csv <- sales.csv[sales.csv$SOLL.HABEN.KENNZSICHEN=="S",]
+# remove all entrys not having "S" as SHKZG (SOLL.HABEN.KENNZSICHEN)
+sales.csv <- sales.csv[sales.csv$SHKZG=="S",]
 
-# split data frame by AUSGLEICHSDATUM, BUCHUNGSKREIS, sum BETRAG
+
+# KOART (Kontoart) (D = Debitoren, K = Kreditoren)
+
+# Split data frame by AUGDT (Datum des Ausgleichs), BUKRS (Buchungskreis), sum DMBTR (Betrag in Hauswährung)
 sales.aggregated <- aggregate(
-  sales.csv$BETRAG, 
-  list(
-    companycode=sales.csv$BUCHUNGSKREIS,
-    weeknumber=as.numeric(format(as.Date(sales.csv$AUSGLEICHDATUM, format = "%d.%m.%Y"), "%U")) + 1
-  ), 
-  function(x){
-    # TODO: maybe merge into sum function
-    return(sum(x))
-  }
+  sales.csv$DMBTR, 
+  by = list(
+    companycode = sales.csv$BUKRS,
+    weeknumber = as.numeric(format(as.Date(sales.csv$AUGDT, format = "%d.%m.%Y"), "%U")) + 1
+  ),
+  FUN=sum, 
+  na.rm=TRUE
 )
 
 # Support for multiple company codes
-sales.prediction.list <- by(sales.aggregated, list(companycode=sales.aggregated$companycode), function(x) {
-  
-  # removes companycode from data.frame
-  # y <- subset(x, select= -companycode)
+sales.prediction.list <- by(sales.aggregated, list(companycode=sales.aggregated$companycode), function(x) {  
 
   sales.wn.max <- max(x$weeknumber)
+  sales.wn.min <- min(x$weeknumber)
+  
+  # Add 0 for missing weeknumbers 
+  x.expanded <- merge(expand.grid(companycode = unique(x$companycode), weeknumber = seq(sales.wn.min, sales.wn.max, 1)), 
+                      x, all=TRUE, by=c("companycode","weeknumber"))
+  x.expanded[is.na(x.expanded)] <- 0
+
   sales.aggregated.length <- nrow(sales.aggregated)
   
   # linear regression
-  sales.aggregated.lm <- lm(x ~ weeknumber, data = x)
+  sales.aggregated.lm <- lm(x ~ weeknumber, data = x.expanded)
   
   # newdata with variables with which to predict
-  sales.prediction.data <- data.frame(weeknumber=seq(sales.wn.max + 1, sales.wn.max + 1 + round(sales.aggregated.length/3), 1))
+  sales.prediction.data <- data.frame(weeknumber=seq(sales.wn.max + 1, sales.wn.max + predictionNum, 1))
 
   # prediction
   sales.prediction.predict <- predict(sales.aggregated.lm, sales.prediction.data,  se.fit = TRUE, interval = "confidence", level = confidenceLevel)
