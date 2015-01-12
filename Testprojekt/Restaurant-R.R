@@ -1,75 +1,37 @@
-# Zeitreihenanalyse von Restaurant
+# Constants
+kPredictionQuarters <- 6
+kConfidenceLevel <- 0.95
 
-# Quartale in Vektor speichern
-quartaleVergangenheit = c()
+# Import Data from csv file
+sales.csv <- read.csv(file = "./data/RestaurantUmsaetze.csv", header = TRUE, sep = ";", strip.white = TRUE, dec = ",")
 
-for (i in 2:13){quartaleVergangenheit[i-1] = RestaurantUmsaetze[3,i]}
+# Fit linear model. Formula = sales_teur ~ t + seasonal_trend 
+sales.prediction.lm <- lm(sales_teur ~ t + seasonal_trend, data = sales.csv)
 
+# Dataframe in which to look for variables with which to predict
+sales.prediction.newdata <- data.frame(t = seq(max(sales.csv$t) + 1, max(sales.csv$t) + kPredictionQuarters, 1))
 
-# Umsätze in Vektor speichern
-umsatzVergangenheit = c()
+# Calculate mean seasonal trend for each quarter
+sales.seasonaltrend.mean <- aggregate(
+  sales.csv$seasonal_trend, 
+  by = list(quarter = sales.csv$quarter), 
+  FUN = mean, 
+  na.rm = TRUE)$x
 
-for (i in 2:13){umsatzVergangenheit[i-1] = RestaurantUmsaetze[2,i]}
+# Repeat mean seasonal trend to fit kPredictionQuarters
+sales.prediction.newdata$seasonal_trend <- rep(sales.seasonaltrend.mean, length.out=kPredictionQuarters)
 
-# Plotten und Regressionsgerade ermitteln und zeichnen
+# Predict sales based on linear model sales.prediction.lm
+sales.prediction.predict <- predict(sales.prediction.lm, newdata = sales.prediction.newdata,  se.fit = TRUE, interval = "confidence", level = kConfidenceLevel)
 
-# fit = lm(umsatzVergangenheit ~ quartaleVergangenheit)
-# summary(fit)
+# Return named dataframe with weeknumber, predicted values and confidence level
+sales.prediction.frame <- data.frame(sales.prediction.newdata$t, sales.prediction.predict, kConfidenceLevel)
+names(sales.prediction.frame) <- c("t", "AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE", "AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE","CONFIDENCE_LEVEL")
 
-lm(formula = umsatzVergangenheit ~ quartaleVergangenheit)
+sales.prediction.frame
 
-plot(quartaleVergangenheit,umsatzVergangenheit, main = "Umsätze 2004-2006", xlab = "Quartale", ylab = "Umsatz in TEUR", type = "b", col = "red")
-abline(fit, lty = 2, col = "blue")
-
-# Trendwerte bestimmen
-
-regressionsGerade = coefficients(fit)
-steigungReg = regressionsGerade[2]
-
-regressionY_Achse = regressionsGerade[1]
-
-#Trendwerte befüllen
-trendwerte = c()
-saisonKomponente = c()
-
-for(i in 1:16){
-  trendwerte[i] = regressionY_Achse + (steigungReg * i)
-}
-
-#reale Saisonkomponente
-for(i in 1:12){
-  saisonKomponente[i] = RestaurantUmsaetze[2,i+1] - trendwerte[i]
-}
-
-# saisonkomponente befüllen
-a = 1
-for(i in 13:16){
-  saisonKomponente[i] = (saisonKomponente[a] + saisonKomponente[a+4] + saisonKomponente[a+8]) / 3
-  a = a + 1
-}
-
-prognoseUmsatz = c()
-
-for (i in 13:16){
-  prognoseUmsatz[i] = trendwerte[i] + saisonKomponente[i]
-  quartaleVergangenheit[i] = i
-  umsatzVergangenheit[i] = prognoseUmsatz[i]
-}
-
-# fit = lm(umsatzVergangenheit ~ quartaleVergangenheit)
-# summary(fit)
-
-# lm(formula = umsatzVergangenheit ~ quartaleVergangenheit)
-
-plot(quartaleVergangenheit,umsatzVergangenheit, main = "Umsätze mit Prognose für Folgejahr", xlab = "Quartale", ylab = "Umsatz in TEUR", type = "b", col = "red")
-abline(fit, lty = 2, col = "blue")
-
-# Intervallschätzung
-new = data.frame(Umsatz = c(13,14,15,16))
-intervallschaetzung = predict(fit, newdata = new, se.fit = TRUE, interval = "confidence", level = 0.95)
-intervallschaetzung
-View (intervallschaetzung, "IntervallschaetzungWerte")
-
-intervallschätzungTabelle = data.frame(intervallschaetzung)
-colnames(intervallschätzungTabelle) = c("AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE", "AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE")
-intervallschätzungTabelle
+# Plot
+names(sales.prediction.frame)[names(sales.prediction.frame)=="AVERAGE_PREDICTIVE_SALE"] <- "sales_teur"
+output <- rbind(sales.csv[, c("t", "sales_teur") ], sales.prediction.frame[, c("t","sales_teur")])
+plot(output$t,output$sales_teur, main = "UmsÃ¤tze mit Prognose fÃ¼r Folgejahr", xlab = "t", ylab = "Umsatz in TEUR", type = "b", col = "red")
+abline(sales.prediction.lm, lty = 2, col = "blue")
