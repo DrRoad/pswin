@@ -1,5 +1,5 @@
 # Constants
-kPredictionQuarters <- 6
+kPredictionQuarters <- 4
 kConfidenceLevel <- 0.95
 
 # Import Data from csv file
@@ -26,12 +26,12 @@ sales.prediction.predict <- predict(sales.prediction.lm, newdata = sales.predict
 
 # Return named dataframe with weeknumber, predicted values and confidence level
 sales.prediction.frame <- data.frame(sales.prediction.newdata$t, sales.prediction.predict, kConfidenceLevel)
-names(sales.prediction.frame) <- c("t", "AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE", "AVERAGE_PREDICTIVE_SALE", "LOWER_PREDICTIVE_SALE", "UPPER_PREDICTIVE_SALE","CONFIDENCE_LEVEL")
+names(sales.prediction.frame) <- c("t", "FIT", "MIN", "MAX", "SEFIT", "DF", "RESIDUALSCALE","CONFIDENCE_LEVEL")
 
 sales.prediction.frame
 
 # Plot
-names(sales.prediction.frame)[names(sales.prediction.frame)=="AVERAGE_PREDICTIVE_SALE"] <- "sales_teur"
+names(sales.prediction.frame)[names(sales.prediction.frame)=="FIT"] <- "sales_teur"
 output <- rbind(sales.csv[, c("t", "sales_teur") ], sales.prediction.frame[, c("t","sales_teur")])
-plot(output$t,output$sales_teur, main = "Umsätze mit Prognose für Folgejahr", xlab = "t", ylab = "Umsatz in TEUR", type = "b", col = "red")
+plot(output$t,output$sales_teur, main = "Umsätze mit Prognose für Folgejahr", xlab = "Quartal", ylab = "Umsatz in TEUR", type = "b", col = "red")
 abline(sales.prediction.lm, lty = 2, col = "blue")
